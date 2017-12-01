@@ -66,6 +66,7 @@ namespace GTAVisionExport {
         private int curSessionId = -1;
         private speedAndTime lowSpeedTime = new speedAndTime();
         private bool IsGamePaused = false;
+        private bool notificationsAllowed = true;
         private StereoCamera cams;
         public VisionExport()
         {
@@ -105,9 +106,9 @@ namespace GTAVisionExport {
         private void handlePipeInput()
         {
             System.IO.File.AppendAllText(logFilePath, "VisionExport handlePipeInput called.\n");
-            UI.Notify("handlePipeInput called");
-            UI.Notify("server connected:" + server.Connected.ToString());
-            UI.Notify(connection == null ? "connection is null" : "connection:" + connection.ToString());
+            UINotify("handlePipeInput called");
+            UINotify("server connected:" + server.Connected.ToString());
+            UINotify(connection == null ? "connection is null" : "connection:" + connection.ToString());
             if (connection == null) return;
             
             byte[] inBuffer = new byte[1024];
@@ -133,7 +134,7 @@ namespace GTAVisionExport {
                 connection = null;
                 return;
             }
-            UI.Notify("str: " + str.ToString());
+            UINotify("str: " + str.ToString());
             dynamic parameters = JsonConvert.DeserializeObject(str);
             string commandName = parameters.name;
             switch (commandName)
@@ -152,7 +153,7 @@ namespace GTAVisionExport {
                     ToggleNavigation();
                     break;
                 case "ENTER_VEHICLE":
-                    UI.Notify("Trying to enter vehicle");
+                    UINotify("Trying to enter vehicle");
                     EnterVehicle();
                     break;
                 case "AUTOSTART":
@@ -168,13 +169,24 @@ namespace GTAVisionExport {
                         .GetMethod("DoKeyboardMessage", BindingFlags.Instance | BindingFlags.Public);
                     m.Invoke(domain, new object[] {Keys.Insert, true, false, false, false});
                     break;
-                case "GET_SCREEN":
-                    var last = ImageUtils.getLastCapturedFrame();
-                    Int64 size = last.Length;
-                    size = IPAddress.HostToNetworkOrder(size);
-                    connection.Send(BitConverter.GetBytes(size));
-                    connection.Send(last);
+                case "SET_TIME":
+                    string time = parameters.time;
+                    UINotify("starting set time, obtained: " + time);
+                    var hoursAndMinutes = time.Split(':');
+                    var hours = int.Parse(hoursAndMinutes[0]);
+                    var minutes = int.Parse(hoursAndMinutes[1]);
+                    GTA.World.CurrentDayTime = new TimeSpan(hours, minutes, 0);
+                    UINotify("Time Set");
                     break;
+//                    uncomment when resolving, how the hell should I get image by socket correctly
+//                case "GET_SCREEN":
+//                    var last = ImageUtils.getLastCapturedFrame();
+//                    Int64 size = last.Length;
+//                    UINotify("last size: " + size.ToString());
+//                    size = IPAddress.HostToNetworkOrder(size);
+//                    connection.Send(BitConverter.GetBytes(size));
+//                    connection.Send(last);
+//                    break;
 
             }
         }
@@ -223,7 +235,7 @@ namespace GTAVisionExport {
             if (server.Poll(10, SelectMode.SelectRead) && connection == null)
             {
                 connection = server.Accept();
-                UI.Notify("CONNECTED");
+                UINotify("CONNECTED");
                 connection.Blocking = false;
             }
             handlePipeInput();
@@ -240,7 +252,7 @@ namespace GTAVisionExport {
                     runTask = StartRun();
                     //StopSession();
                     //Autostart();
-                    UI.Notify("need reload game");
+                    UINotify("need reload game");
                     Script.Wait(100);
                     ReloadGame();
                     break;
@@ -336,7 +348,7 @@ namespace GTAVisionExport {
             if (player.IsInVehicle())
             {
                 Vehicle vehicle = player.CurrentVehicle;
-                //UI.Notify("T:" + Game.GameTime.ToString() + " S: " + vehicle.Speed.ToString());
+                //UINotify("T:" + Game.GameTime.ToString() + " S: " + vehicle.Speed.ToString());
                 if (vehicle.Speed < 1.0f) //speed is in mph
                 {
                     if (lowSpeedTime.checkTrafficJam(Game.GameTime, vehicle.Speed))
@@ -358,6 +370,7 @@ namespace GTAVisionExport {
 
         public Bitmap CaptureScreen()
         {
+            UINotify("CaptureScreen called");
             var cap = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height);
             var gfx = Graphics.FromImage(cap);
             //var dat = GTAData.DumpData(Game.GameTime + ".jpg");
@@ -441,6 +454,15 @@ namespace GTAVisionExport {
             Game.Player.LastVehicle.Alpha = int.MaxValue;
         }
 
+        public void UINotify(string message)
+        {
+            //just wrapper for UI.Notify, but lets us disable showing notifications ar all
+            if (notificationsAllowed)
+            {
+                UI.Notify(message);                
+            }
+        }
+        
         public void EnterVehicle()
         {
             /*
@@ -449,7 +471,14 @@ namespace GTAVisionExport {
             */
             Model mod = new Model(GTA.Native.VehicleHash.Asea);
             var vehicle = GTA.World.CreateVehicle(mod, player.Character.Position);
-            player.Character.SetIntoVehicle(vehicle, VehicleSeat.Driver);
+            if (vehicle == null)
+            {
+                UINotify("vehicle is null. Something is fucked up");
+            }
+            else
+            {
+                player.Character.SetIntoVehicle(vehicle, VehicleSeat.Driver);                
+            }
             //vehicle.Alpha = 0; //transparent
             //player.Character.Alpha = 0;
         }
@@ -475,7 +504,7 @@ namespace GTAVisionExport {
             */
             // or use CLEAR_AREA_OF_VEHICLES
             Ped player = Game.Player.Character;
-            //UI.Notify("x = " + player.Position.X + "y = " + player.Position.Y + "z = " + player.Position.Z);
+            //UINotify("x = " + player.Position.X + "y = " + player.Position.Y + "z = " + player.Position.Z);
             // no need to release the autodrive here
             // delete all surrounding vehicles & the driver's car
             Function.Call(GTA.Native.Hash.CLEAR_AREA_OF_VEHICLES, player.Position.X, player.Position.Y, player.Position.Z, 1000f, false, false, false, false);
@@ -511,32 +540,45 @@ namespace GTAVisionExport {
                 postgresTask = StartSession();
                 runTask?.Wait();
                 runTask = StartRun();
-                UI.Notify("GTA Vision Enabled");
+                UINotify("GTA Vision Enabled");
             }
             if (k.KeyCode == Keys.PageDown)
             {
                 StopRun();
                 StopSession();
-                UI.Notify("GTA Vision Disabled");
+                UINotify("GTA Vision Disabled");
             }
             if (k.KeyCode == Keys.H) // temp modification
             {
                 EnterVehicle();
-                UI.Notify("Trying to enter vehicle");
+                UINotify("Trying to enter vehicle");
                 ToggleNavigation();
             }
             if (k.KeyCode == Keys.Y) // temp modification
             {
                 ReloadGame();
             }
+            if (k.KeyCode == Keys.X) // temp modification
+            {
+                notificationsAllowed = !notificationsAllowed;
+                if (notificationsAllowed)
+                {
+                    UI.Notify("Notifications Enabled");
+                }
+                else
+                {
+                    UI.Notify("Notifications Disabled");
+                }
+            }
             if (k.KeyCode == Keys.U) // temp modification
             {
                 var settings = ScriptSettings.Load("GTAVisionExport.xml");
                 var loc = AppDomain.CurrentDomain.BaseDirectory;
 
-                //UI.Notify(ConfigurationManager.AppSettings["database_connection"]);
+                //UINotify(ConfigurationManager.AppSettings["database_connection"]);
                 var str = settings.GetValue("", "ConnectionString");
-                UI.Notify(loc);
+                UINotify("BaseDirectory: " + loc);
+                UINotify("ConnectionString: " + str);
 
             }
             if (k.KeyCode == Keys.G) // temp modification
@@ -586,7 +628,7 @@ namespace GTAVisionExport {
                 /* set it between 0 = stop, 1 = heavy rain. set it too high will lead to sloppy ground */
                 Function.Call(GTA.Native.Hash._SET_RAIN_FX_INTENSITY, 0.5f);
                 var test = Function.Call<float>(GTA.Native.Hash.GET_RAIN_LEVEL);
-                UI.Notify("" + test);
+                UINotify("" + test);
                 World.CurrentDayTime = new TimeSpan(12, 0, 0);
                 //Script.Wait(5000);
             }
@@ -608,8 +650,8 @@ namespace GTAVisionExport {
             if (k.KeyCode == Keys.I)
             {
                 var info = new GTAVisionUtils.InstanceData();
-                UI.Notify(info.type);
-                UI.Notify(info.publichostname);
+                UINotify(info.type);
+                UINotify(info.publichostname);
             }
         }
 
@@ -696,12 +738,13 @@ namespace GTAVisionExport {
             {
                 var res = Game.ScreenResolution;
                 ImageUtils.WriteToTiff(Path.Combine(dataPath, "test"), res.Width, res.Height, colors, depth, stencil);
-                UI.Notify(GameplayCamera.FieldOfView.ToString());
+                UINotify(GameplayCamera.FieldOfView.ToString());
             }
             else
             {
-                UI.Notify("No Depth Data quite yet");
+                UINotify("No Depth Data quite yet");
             }
+            UINotify((connection != null && connection.Connected).ToString());
         }
     }
 }
