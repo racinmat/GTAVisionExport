@@ -35,6 +35,7 @@ using Color = System.Windows.Media.Color;
 using System.Configuration;
 using System.Threading;
 using IniParser;
+using Newtonsoft.Json;
 
 namespace GTAVisionExport {
     
@@ -58,9 +59,8 @@ namespace GTAVisionExport {
         private Socket connection;
         private UTF8Encoding encoding = new UTF8Encoding(false);
         private KeyHandling kh = new KeyHandling();
-        private ZipArchive archive;
-        private Stream S3Stream;
-        private AmazonS3Client client;
+//        private ZipArchive archive;
+//        private Stream outStream;
         private Task postgresTask;
         private Task runTask;
         private int curSessionId = -1;
@@ -133,8 +133,10 @@ namespace GTAVisionExport {
                 connection = null;
                 return;
             }
-            UI.Notify(str.Length.ToString());
-            switch (str)
+            UI.Notify("str: " + str.ToString());
+            dynamic parameters = JsonConvert.DeserializeObject(str);
+            string commandName = parameters.name;
+            switch (commandName)
             {
                 case "START_SESSION":
                     postgresTask?.Wait();
@@ -177,43 +179,45 @@ namespace GTAVisionExport {
             }
         }
 
-        private void UploadFile()
-        {
-            
-            archive.Dispose();
-            var oldOutput = outputPath;
-            if (oldOutput != null)
-            {
-                new Thread(() =>
-                {
-                    File.Move(oldOutput, Path.Combine(dataPath, run.guid + ".zip"));
-                }).Start();
-            }
-            
-            outputPath = Path.GetTempFileName();
-            S3Stream = File.Open(outputPath, FileMode.Truncate);
-            archive = new ZipArchive(S3Stream, ZipArchiveMode.Update);
-            //File.Delete(oldOutput);
-            
-            /*
-            archive.Dispose();
-            var req = new PutObjectRequest {
-                BucketName = "gtadata",
-                Key = "images/" + run.guid + ".zip",
-                FilePath = outputPath
-            };
-            var resp = client.PutObjectAsync(req);
-            outputPath = Path.GetTempFileName();
-            S3Stream = File.Open(outputPath, FileMode.Truncate);
-            archive = new ZipArchive(S3Stream, ZipArchiveMode.Update);
-            
-            await resp;
-            File.Delete(req.FilePath);
-            */
-        }
+//        private void UploadFile()
+//        {
+//            System.IO.File.AppendAllText(logFilePath, DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss") + ": VisionExport UploadFile called.\n");
+//            UINotify("UploadFile called");
+//
+////            archive.Dispose();
+//            var oldOutput = outputPath;
+//            if (oldOutput != null)
+//            {
+//                new Thread(() =>
+//                {
+//                    File.Move(oldOutput, Path.Combine(dataPath, run.guid + ".zip"));
+//                }).Start();
+//            }
+//            
+//            outputPath = Path.GetTempFileName();
+//            outStream = File.Open(outputPath, FileMode.Truncate);
+////            archive = new ZipArchive(outStream, ZipArchiveMode.Update);
+//            //File.Delete(oldOutput);
+//            
+//            /*
+//            archive.Dispose();
+//            var req = new PutObjectRequest {
+//                BucketName = "gtadata",
+//                Key = "images/" + run.guid + ".zip",
+//                FilePath = outputPath
+//            };
+//            var resp = client.PutObjectAsync(req);
+//            outputPath = Path.GetTempFileName();
+//            S3Stream = File.Open(outputPath, FileMode.Truncate);
+//            archive = new ZipArchive(S3Stream, ZipArchiveMode.Update);
+//            
+//            await resp;
+//            File.Delete(req.FilePath);
+//            */
+//        }
+        
         public void OnTick(object o, EventArgs e)
         {
-            
             
 
             if (server.Poll(10, SelectMode.SelectRead) && connection == null)
@@ -257,23 +261,24 @@ namespace GTAVisionExport {
             }
             if (!runTask.IsCompleted) return;
             if (!postgresTask.IsCompleted) return;
-            
-            List<byte[]> colors = new List<byte[]>();
+
+//            List<byte[]> colors = new List<byte[]>();
             Game.Pause(true);
-            Script.Wait(500);
-            GTAData dat = GTAData.DumpData(Game.GameTime + ".tiff", new List<Weather>());
+            Script.Wait(100);
+            var dateTimeFormat = @"yyyy-MM-dd--HH-mm-ss--fff";
+            GTAData dat = GTAData.DumpData(DateTime.UtcNow.ToString(dateTimeFormat), wantedWeather.ToList());
             if (dat == null) return;
-            var thisframe = VisionNative.GetCurrentTime();
-            var depth = VisionNative.GetDepthBuffer();
-            var stencil = VisionNative.GetStencilBuffer();
-            colors.Add(VisionNative.GetColorBuffer());
+//            var thisframe = VisionNative.GetCurrentTime();
+//            var depth = VisionNative.GetDepthBuffer();
+//            var stencil = VisionNative.GetStencilBuffer();
+//            colors.Add(VisionNative.GetColorBuffer());
             /*
             foreach (var wea in wantedWeather) {
                 World.TransitionToWeather(wea, 0.0f);
                 Script.Wait(1);
                 colors.Add(VisionNative.GetColorBuffer());
             }*/
-            Game.Pause(false);
+//            Game.Pause(false);
             
             /*
             if (World.Weather != Weather.Snowing)
@@ -281,16 +286,16 @@ namespace GTAVisionExport {
                 World.TransitionToWeather(Weather.Snowing, 1);
                 
             }*/
-            var colorframe = VisionNative.GetLastColorTime();
-            var depthframe = VisionNative.GetLastConstantTime();
-            var constantframe = VisionNative.GetLastConstantTime();
-            //UI.Notify("DIFF: " + (colorframe - depthframe) + " FRAMETIME: " + (1 / Game.FPS) * 1000);
-            UI.Notify(colors[0].Length.ToString());
-            if (depth == null || stencil == null)
-            {
-                UI.Notify("No DEPTH");
-                return;
-            }
+//            var colorframe = VisionNative.GetLastColorTime();
+//            var depthframe = VisionNative.GetLastConstantTime();
+//            var constantframe = VisionNative.GetLastConstantTime();
+            //UINotify("DIFF: " + (colorframe - depthframe) + " FRAMETIME: " + (1 / Game.FPS) * 1000);
+//            UINotify("colors length: " + colors[0].Length.ToString());
+//            if (depth == null || stencil == null)
+//            {
+//                UINotify("No DEPTH");
+//                return;
+//            }
 
             /*
              * this code checks to see if there's drift
@@ -308,18 +313,19 @@ namespace GTAVisionExport {
                 PostgresExport.SaveSnapshot(dat, run.guid);
             }
             */
-            ImageUtils.WaitForProcessing();
-            ImageUtils.StartUploadTask(archive, Game.GameTime.ToString(), Game.ScreenResolution.Width,
-                Game.ScreenResolution.Height, colors, depth, stencil);
+//            ImageUtils.WaitForProcessing();
+            saveSnapshotToFile(dat.ImageName, wantedWeather);
+//            ImageUtils.StartUploadTask(archive, Game.GameTime.ToString(), Game.ScreenResolution.Width,
+//                Game.ScreenResolution.Height, colors, depth, stencil);
             
             PostgresExport.SaveSnapshot(dat, run.guid);
-            S3Stream.Flush();
-            if ((Int64)S3Stream.Length > (Int64)2048 * (Int64)1024 * (Int64)1024) {
-                ImageUtils.WaitForProcessing();
-                StopRun();
-                runTask?.Wait();
-                runTask = StartRun();
-            }
+//            outStream.Flush();
+//            if ((Int64)outStream.Length > (Int64)2048 * (Int64)1024 * (Int64)1024) {
+//                ImageUtils.WaitForProcessing();
+//                StopRun();
+//                runTask?.Wait();
+//                runTask = StartRun();
+//            }
         }
 
         /* -1 = need restart, 0 = normal, 1 = need to enter vehicle */
@@ -406,9 +412,9 @@ namespace GTAVisionExport {
             //var s3Info = new S3FileInfo(client, "gtadata", run.archiveKey);
             //S3Stream = s3Info.Create();
             
-            outputPath = Path.GetTempFileName();
-            S3Stream = File.Open(outputPath, FileMode.Truncate);
-            archive = new ZipArchive(S3Stream, ZipArchiveMode.Create);
+//            outputPath = Path.GetTempFileName();
+//            outStream = File.Open(outputPath, FileMode.Truncate);
+//            archive = new ZipArchive(outStream, ZipArchiveMode.Create);
             
             //archive = new ZipArchive(, ZipArchiveMode.Create);
             
@@ -423,13 +429,13 @@ namespace GTAVisionExport {
         {
             runTask?.Wait();
             ImageUtils.WaitForProcessing();
-            if (S3Stream.CanWrite)
-            {
-                S3Stream.Flush();
-            }
+//            if (outStream.CanWrite)
+//            {
+//                outStream.Flush();
+//            }
             enabled = false;
             PostgresExport.StopRun(run);
-            UploadFile();
+//            UploadFile();
             run = null;
             
             Game.Player.LastVehicle.Alpha = int.MaxValue;
@@ -587,93 +593,14 @@ namespace GTAVisionExport {
 
             if (k.KeyCode == Keys.N)
             {
-                /*
-                //var color = VisionNative.GetColorBuffer();
+                //var color = VisionNatGetColorBuffer();
                 
-                List<byte[]> colors = new List<byte[]>();
-                Game.Pause(true);
-                Script.Wait(1);
-                var depth = VisionNative.GetDepthBuffer();
-                var stencil = VisionNative.GetStencilBuffer();
-                foreach (var wea in wantedWeather) {
-                    World.TransitionToWeather(wea, 0.0f);
-                    Script.Wait(1);
-                    colors.Add(VisionNative.GetColorBuffer());
-                }
-                Game.Pause(false);
-                if (depth != null)
-                {
-                    var res = Game.ScreenResolution;
-                    var t = Tiff.Open(Path.Combine(dataPath, "test.tiff"), "w");
-                    ImageUtils.WriteToTiff(t, res.Width, res.Height, colors, depth, stencil);
-                    t.Close();
-                    UI.Notify(GameplayCamera.FieldOfView.ToString());
-                }
-                else
-                {
-                    UI.Notify("No Depth Data quite yet");
-                }
-                //UI.Notify((connection != null && connection.Connected).ToString());
-                */
+                dumpTest();
+
                 //var color = VisionNative.GetColorBuffer();
                 for (int i = 0; i < 100; i++)
                 {
-                    List<byte[]> colors = new List<byte[]>();
-                    Game.Pause(true);
-                    var depth = VisionNative.GetDepthBuffer();
-                    var stencil = VisionNative.GetStencilBuffer();
-                    foreach (var wea in wantedWeather)
-                    {
-                        World.TransitionToWeather(wea, 0.0f);
-                        Script.Wait(1);
-                        colors.Add(VisionNative.GetColorBuffer());
-                    }
-
-                    Game.Pause(false);
-                    var res = Game.ScreenResolution;
-                    var t = Tiff.Open(Path.Combine(dataPath, "info" + i.ToString() + ".tiff"), "w");
-                    ImageUtils.WriteToTiff(t, res.Width, res.Height, colors, depth, stencil);
-                    t.Close();
-                    UI.Notify(GameplayCamera.FieldOfView.ToString());
-                    //UI.Notify((connection != null && connection.Connected).ToString());
-
-
-                    var data = GTAData.DumpData(Game.GameTime + ".dat", new List<Weather>(wantedWeather));
-
-                    string path = @"C:\Users\NGV-02\Documents\Data\info.txt";
-                    // This text is added only once to the file.
-                    if (!File.Exists(path))
-                    {
-                        // Create a file to write to.
-                        using (StreamWriter file = File.CreateText(path))
-                        {
-                            file.WriteLine("cam direction & Ped pos file");
-                        }
-                    }
-
-                    using (StreamWriter file = File.AppendText(path))
-                    {
-                        file.WriteLine("==============info" + i.ToString() + ".tiff 's metadata=======================");
-                        file.WriteLine("cam pos");
-                        file.WriteLine(GameplayCamera.Position.X.ToString());
-                        file.WriteLine(GameplayCamera.Position.Y.ToString());
-                        file.WriteLine(GameplayCamera.Position.Z.ToString());
-                        file.WriteLine("cam direction");
-                        file.WriteLine(GameplayCamera.Direction.X.ToString());
-                        file.WriteLine(GameplayCamera.Direction.Y.ToString());
-                        file.WriteLine(GameplayCamera.Direction.Z.ToString());
-                        file.WriteLine("character");
-                        file.WriteLine(data.Pos.X.ToString());
-                        file.WriteLine(data.Pos.Y.ToString());
-                        file.WriteLine(data.Pos.Z.ToString());
-                        foreach (var detection in data.Detections)
-                        {
-                            file.WriteLine(detection.Type.ToString());
-                            file.WriteLine(detection.Pos.X.ToString());
-                            file.WriteLine(detection.Pos.Y.ToString());
-                            file.WriteLine(detection.Pos.Z.ToString());
-                        }
-                    }
+                    saveSnapshotToFile(i.ToString(), wantedWeather);
 
                     Script.Wait(200);
                 }
@@ -683,6 +610,97 @@ namespace GTAVisionExport {
                 var info = new GTAVisionUtils.InstanceData();
                 UI.Notify(info.type);
                 UI.Notify(info.publichostname);
+            }
+        }
+
+        private void saveSnapshotToFile(String name, Weather[] weathers)
+        {
+            List<byte[]> colors = new List<byte[]>();
+            Game.Pause(true);
+            var depth = VisionNative.GetDepthBuffer();
+            var stencil = VisionNative.GetStencilBuffer();
+            foreach (var wea in weathers)
+            {
+                World.TransitionToWeather(wea, 0.0f);
+                Script.Wait(1);
+                colors.Add(VisionNative.GetColorBuffer());
+            }
+
+            Game.Pause(false);
+            var res = Game.ScreenResolution;
+            var fileName = Path.Combine(dataPath, "info-" + name);
+            ImageUtils.WriteToTiff(fileName, res.Width, res.Height, colors, depth, stencil, false);
+//            UINotify("file saved to: " + fileName);
+            
+//            UINotify("FieldOfView: " + GameplayCamera.FieldOfView.ToString());
+            //UINotify((connection != null && connection.Connected).ToString());
+
+
+//            var data = GTAData.DumpData(Game.GameTime + ".dat", new List<Weather>(wantedWeather));
+
+//            string path = @"D:\GTAV_extraction_output\info.txt";
+//            // This text is added only once to the file.
+//            if (!File.Exists(path))
+//            {
+//                // Create a file to write to.
+//                using (StreamWriter file = File.CreateText(path))
+//                {
+//                    file.WriteLine("cam direction & Ped pos file");
+//                }
+//            }
+//
+//            using (StreamWriter file = File.AppendText(path))
+//            {
+//                file.WriteLine("==============info" + i.ToString() + ".tiff 's metadata=======================");
+//                file.WriteLine("cam pos");
+//                file.WriteLine(GameplayCamera.Position.X.ToString());
+//                file.WriteLine(GameplayCamera.Position.Y.ToString());
+//                file.WriteLine(GameplayCamera.Position.Z.ToString());
+//                file.WriteLine("cam direction");
+//                file.WriteLine(GameplayCamera.Direction.X.ToString());
+//                file.WriteLine(GameplayCamera.Direction.Y.ToString());
+//                file.WriteLine(GameplayCamera.Direction.Z.ToString());
+//                file.WriteLine("projection matrix");
+//                file.WriteLine(data.ProjectionMatrix.Values.ToString());
+//                file.WriteLine("view matrix");
+//                file.WriteLine(data.ViewMatrix.Values.ToString());
+//                file.WriteLine("character");
+//                file.WriteLine(data.Pos.X.ToString());
+//                file.WriteLine(data.Pos.Y.ToString());
+//                file.WriteLine(data.Pos.Z.ToString());
+//                foreach (var detection in data.Detections)
+//                {
+//                    file.WriteLine(detection.Type.ToString());
+//                    file.WriteLine(detection.Pos.X.ToString());
+//                    file.WriteLine(detection.Pos.Y.ToString());
+//                    file.WriteLine(detection.Pos.Z.ToString());
+//                }
+//            }
+        }
+
+        private void dumpTest()
+        {
+            List<byte[]> colors = new List<byte[]>();
+            Game.Pause(true);
+            Script.Wait(1);
+            var depth = VisionNative.GetDepthBuffer();
+            var stencil = VisionNative.GetStencilBuffer();
+            foreach (var wea in wantedWeather)
+            {
+                World.TransitionToWeather(wea, 0.0f);
+                Script.Wait(1);
+                colors.Add(VisionNative.GetColorBuffer());
+            }
+            Game.Pause(false);
+            if (depth != null)
+            {
+                var res = Game.ScreenResolution;
+                ImageUtils.WriteToTiff(Path.Combine(dataPath, "test"), res.Width, res.Height, colors, depth, stencil);
+                UI.Notify(GameplayCamera.FieldOfView.ToString());
+            }
+            else
+            {
+                UI.Notify("No Depth Data quite yet");
             }
         }
     }
